@@ -1,0 +1,11 @@
+Run Game:
+    python main_game.py player_balance [ number_of_card_decks ]
+
+Betting options:
+1. Double Down: Player can double his initial bet following the initial two-card deal, but can't
+double down after splitting.
+
+2. Split Hand: Player can split the initial two-card hand into two and play them separately when
+the first two cards are equal value.
+
+3. Soft Hand: Ace can be counted as 1 or 11 to both dealer and player.

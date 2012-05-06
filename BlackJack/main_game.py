@@ -1,6 +1,6 @@
 #!/usr/bin/python2.6
 """
-Blackjack Game Entry
+Black Jack - Game Entry
 """
 
 from game import Game

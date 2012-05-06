@@ -1,6 +1,6 @@
 #!/usr/bin/python2.6
 """
-Utilities functions
+Black Jack - Utilities functions
 """
 def check_float(num):
     try:

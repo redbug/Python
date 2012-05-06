@@ -1,5 +1,7 @@
 #!/usr/bin/python2.6
-
+"""
+Black Jack - Game Model
+"""
 import sys
 
 from settings import *
@@ -20,22 +22,48 @@ class Game(object):
              (PHASE_BET_COLLECTION, "Bet Collection Phase"),
              ]
     
+    @classmethod
+    def count_points(cls, card_set):        
+        total = 0
+        credit = 0
+        for card in card_set:
+            point = card.pip + 1
+            if point == 1:
+                credit += 1
+            elif point > 10:
+                point = 10
+            total += point
+        
+        # Test soft hand
+        for i in range(credit):
+            if total + 10 <= 21:
+                total += 10
+            else:
+                break
+            
+        return total    
+    
+    @classmethod
+    def check_num_slot(cls, num_slot):
+        if int(num_slot) not in range(1,5):
+            return False
+        return True
+    
     def __init__(self, dealer, player):
         self._dealer = dealer
         self._player = player
         self.reset()
         
     def reset(self):
-        self._bets_on_slots = [0] * 4
-        self._card_sets_on_slots = [None] * 4
-        self._dealer_cards = []
+        self._player.reset()
+        self._dealer.reset()
         self._phase = Game.PHASE_INITIAL_BETTING
         
     def init_betting_phase(self):
         self._dealer.reset_decks()
         
         print_phase(Game.PHASE[0])
-        self.show_player_balance()
+        self.display_player_balance()
         
         while True:
             num_slot = raw_input( message("Select a slot to bet ( [1-4]:slot, s:start game, q:quit game):") )
@@ -47,8 +75,7 @@ class Game(object):
             if num_slot == 's':
                 print_action('Start Game.')
                 
-                #if [True for bet in self._bets_on_slots if bet > 0]:
-                if reduce(lambda x,y: x+y, self._bets_on_slots) != 0: 
+                if reduce(lambda x,y: x+y, self._player.bets_on_slots) != 0: 
                     self._phase = Game.PHASE_INITIAL_DEAL
                     return
                 else:
@@ -75,7 +102,7 @@ class Game(object):
                     
                     if bet == 'w':
                         print_action("Withdraw.")
-                        bet = raw_input(message("Your bet on Slot %s: %s\nHow much will you withdraw from the slot? " % (num_slot, self._bets_on_slots[num_slot-1])) )
+                        bet = raw_input(message("Your bet on Slot %s: %s\nHow much will you withdraw from the slot? " % (num_slot, self._player.bets_on_slots[num_slot-1])) )
                         withdraw = True
                     
                     is_valid, bet = check_int(bet)
@@ -92,7 +119,7 @@ class Game(object):
                         else:
                             print_action("Bet %s." % bet)
                         print_highlight("Bets on each slot:" +  str(self.bet(num_slot-1, bet, undo=withdraw)) )
-                        self.show_player_balance()
+                        self.display_player_balance()
                         break                
     
     def init_deal_phase(self):
@@ -105,7 +132,7 @@ class Game(object):
     def post_deal_phase(self):
         print_phase(Game.PHASE[2])
         
-        for i, card_sets in enumerate( self._card_sets_on_slots ):
+        for i, card_sets in enumerate( self._player.card_sets_on_slots ):
             if card_sets:
                 split_status = False
                 print_highlight("Your cards on Slot %d: " % (i+1))
@@ -152,13 +179,14 @@ class Game(object):
                             print_action("Split.")
                             split_status = True
                             
-                            original_bet = self._bets_on_slots[i]
+                            original_bet = self._player.bets_on_slots[i]
                             if self.check_player_balance(original_bet):
                                 self._player.balance -= original_bet
                                 print_highlight("Place a second bet for the new splited card set: %s" % original_bet)
-                                self.show_player_balance() 
+                                self.display_player_balance() 
                                 print_highlight("%s ->" % card_set)
                                 
+                                # split the original card set to two new card sets.
                                 new_card_set = [card_set.pop()]
                                 
                                 card_set.extend(self._dealer.draw_cards_from_deck(1))
@@ -170,11 +198,13 @@ class Game(object):
                             
                         elif act == "d" and allow_double and not split_status:
                             print_action("Double down on slot %s." % (i+1))
-                            original_bet = self._bets_on_slots[i]
+                            original_bet = self._player.bets_on_slots[i]
                             
+                            # When you double down, you must take one additional card and 
+                            # you cannot receive more than one.
                             if self.check_player_balance(original_bet):
                                 print_highlight( "Bets on each slot:" +  str(self.bet(i, original_bet, double=True)) )
-                                self.show_player_balance()
+                                self.display_player_balance()
                                 
                                 print_highlight("Take one additional card.")
                                 card_set.extend( self._dealer.draw_cards_from_deck(1) )
@@ -191,11 +221,11 @@ class Game(object):
         print_phase(Game.PHASE[3])
         
         while True:
-            dealer_points = Game.count_points(self._dealer_cards)
-            print_highlight( "Dealer's cards: %s (points: %s)" % (self.show_dealer_card(show_first_card=True), Game.count_points(self._dealer_cards)) )
+            dealer_points = Game.count_points(self._dealer.cards)
+            print_highlight( "Dealer's cards: %s (points: %s)" % (self.show_dealer_card(show_first_card=True), Game.count_points(self._dealer.cards)) )
             
             if dealer_points <= 16:
-                self._dealer_cards.extend( self._dealer.draw_cards_from_deck(1) )
+                self._dealer.cards.extend( self._dealer.draw_cards_from_deck(1) )
             elif dealer_points > 21:
                 print_highlight("Dealer Bust!")
                 break
@@ -203,15 +233,15 @@ class Game(object):
                 if dealer_points == 21:
                     print_highlight("Dealer Blackjack!")
                 break
-        #print_highlight( "Dealer's cards: %s (points: %s)" % (self.show_dealer_card(show_first_card=True), Game.count_points(self._dealer_cards)) )        
+                
         self._phase = Game.PHASE_BET_COLLECTION
     
     def bet_collection_phase(self):
         print_phase(Game.PHASE[4])
         
-        for i, card_sets in enumerate( self._card_sets_on_slots ):
+        for i, card_sets in enumerate( self._player.card_sets_on_slots ):
             if card_sets:
-                bet = self._bets_on_slots[i]
+                bet = self._player.bets_on_slots[i]
                 
                 print_highlight( "Your cards on Slot %d: " % (i+1) )
                 for k, card_set in enumerate(card_sets):                    
@@ -235,7 +265,7 @@ class Game(object):
     
     def judge(self, card_set, bet):
         total_points = Game.count_points(card_set)
-        dealer_total_points = Game.count_points(self._dealer_cards)
+        dealer_total_points = Game.count_points(self._dealer.cards)
         
         dealer_total_points = 0 if dealer_total_points > 21 else dealer_total_points
         total_points = 0 if total_points > 21 else total_points
@@ -253,43 +283,15 @@ class Game(object):
         else:
             return Dealer.TIE, 0
     
-    
-    def show_player_balance(self):
+    def display_player_balance(self):
         print_highlight("Your balance: %s" % self._player.balance)
         
     def show_dealer_card(self, show_first_card=False):
         if show_first_card:
-            return self._dealer_cards
+            return self._dealer.cards
         else:
-            return "[ " + "*Hole Card*, " + ", ".join( [str(card) for i, card in enumerate(self._dealer_cards) if i > 0]) + " ]"
-        
-    @classmethod
-    def count_points(cls, card_set):        
-        total = 0
-        credit = 0
-        for card in card_set:
-            point = card.pip + 1
-            if point == 1:
-                credit += 1
-            elif point > 10:
-                point = 10
-            total += point
-        
-        """ Test soft hand """
-        for i in range(credit):
-            if total + 10 <= 21:
-                total += 10
-            else:
-                break
+            return "[ " + "*Hole Card*, " + ", ".join( [str(card) for i, card in enumerate(self._dealer.cards) if i > 0]) + " ]"
             
-        return total    
-    
-    @classmethod
-    def check_num_slot(cls, num_slot):
-        if int(num_slot) not in range(1,5):
-            return False
-        return True
-    
     def check_player_balance(self, bet):
         if bet > self._player.balance:
             print_error("Your balance is not enough.")
@@ -297,20 +299,16 @@ class Game(object):
         return True
     
     def bet(self, num_slot, bet, undo=False, double=False):
-        """    
-        blackjack-bet - takes a slot number (int), bet amount (float). Must check for validity of slot numbers (1-4). 
-        Must check if bet is within house minimum and maximum. 
-        Must check if bet is not over player balance. 
-        Optional parameter, undo (boolean) if set, removes the bet amount from the slot number. 
-        Returns total bet amounts for each slot.
-        """
-        bet_on_slot = self._bets_on_slots[num_slot]
+        bet_on_slot = self._player.bets_on_slots[num_slot]
+        
+        # withdraw bet from a slot
         if undo == True:
             if bet_on_slot >= bet:
                 self._player.balance += bet
-                self._bets_on_slots[num_slot] -= bet
+                self._player.bets_on_slots[num_slot] -= bet
             else:
                 print_error( "Your bet on slot %s is %s. You can't withdraw %s bet from it." % (num_slot+1, bet_on_slot, bet) )   
+        # bet on a slot
         else:
             after_bet_on_slot = bet_on_slot + bet 
             
@@ -318,22 +316,18 @@ class Game(object):
                 print_error("The bet on the slot must within [%s, %s]" % (HOUSE_MIN, HOUSE_MAX))
             else:
                 self._player.balance -= bet
-                self._bets_on_slots[num_slot] += bet                     
+                self._player.bets_on_slots[num_slot] += bet                     
 
-        return self._bets_on_slots
+        return self._player.bets_on_slots
 
     def deal(self):
-        """
-        blackjack-deal - starts the game. 
-        Returns the cards in all slots that have bets on them as well as the dealer's cards.
-        """
-        self._dealer_cards = self._dealer.draw_cards_from_deck(2)
+        self._dealer.cards = self._dealer.draw_cards_from_deck(2)
         
-        for i, bet in enumerate(self._bets_on_slots):
+        for i, bet in enumerate(self._player.bets_on_slots):
             if bet != 0:
-                self._card_sets_on_slots[i] = [self._dealer.draw_cards_from_deck(2)]
+                self._player.card_sets_on_slots[i] = [self._dealer.draw_cards_from_deck(2)]
         
-        return (self._dealer_cards, self._card_sets_on_slots)
+        return (self._dealer.cards, self._player.card_sets_on_slots)
         
     def run(self):
         {

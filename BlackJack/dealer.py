@@ -1,6 +1,6 @@
 #!/usr/bin/python2.6
 """
-Black Jack - Dealer Class
+Black Jack - Dealer Model
 """
 import random
 
@@ -14,10 +14,22 @@ class Dealer(Player):
     TIE = 2
     
     def __init__(self, num_decks=NUM_DECKS ):
-        self.num_decks = num_decks
+        self._num_decks = num_decks
+        self.reset()
+        
+    def reset(self):
+        self._cards = []
+    
+    @property
+    def cards(self):
+        return self._cards
+    
+    @cards.setter
+    def cards(self, value):
+        self._cards = value
         
     def reset_decks(self):
-        self._decks = [Card(i) for i in range(NUM_CARDS)] * self.num_decks
+        self._decks = [Card(i) for i in range(NUM_CARDS)] * self._num_decks
         self.shuffle()
         
         #for testing card split
