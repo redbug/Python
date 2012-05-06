@@ -3,17 +3,22 @@
 import sys
 
 from settings import *
-from utils import check_float, check_int
+from utils import *
 from dealer import Dealer
 
 class Game(object):
-    #TODO: split, double down, 5 more cards
-    
     PHASE_INITIAL_BETTING  = 0
     PHASE_INITIAL_DEAL     = 1
     PHASE_POST_DEAL        = 2
     PHASE_DEALER           = 3
     PHASE_BET_COLLECTION   = 4
+    
+    PHASE = [(PHASE_INITIAL_BETTING, "Initial Betting Phase"),
+             (PHASE_INITIAL_DEAL, "Initial Deal Phase"),
+             (PHASE_POST_DEAL, "Post Deal Action Phase"),
+             (PHASE_DEALER, "Dealer Phase"),
+             (PHASE_BET_COLLECTION, "Bet Collection Phase"),
+             ]
     
     def __init__(self, dealer, player):
         self._dealer = dealer
@@ -22,150 +27,210 @@ class Game(object):
         
     def reset(self):
         self._bets_on_slots = [0] * 4
-        self._cards_on_slots = [None] * 4
-        self._double_down_on_slots = [False] * 4
+        self._card_sets_on_slots = [None] * 4
         self._dealer_cards = []
         self._phase = Game.PHASE_INITIAL_BETTING
         
     def init_betting_phase(self):
+        self._dealer.reset_decks()
         
-        print " == Initial Betting Phase == "
-        print "Your balance: %s" % self._player.balance
+        print_phase(Game.PHASE[0])
+        self.show_player_balance()
         
         while True:
-            num_slot = raw_input("Select a slot to bet (slot:[1-4], n:done):")
+            num_slot = raw_input( message("Select a slot to bet ( [1-4]:slot, s:start game, q:quit game):") )
             
-            if num_slot == 'n':
-                self._phase = Game.PHASE_INITIAL_DEAL
-                return
+            if num_slot == 'q':
+                print_action('Quit Game.')
+                sys.exit()
+                
+            if num_slot == 's':
+                print_action('Start Game.')
+                
+                #if [True for bet in self._bets_on_slots if bet > 0]:
+                if reduce(lambda x,y: x+y, self._bets_on_slots) != 0: 
+                    self._phase = Game.PHASE_INITIAL_DEAL
+                    return
+                else:
+                    print_error("You havn't bet on any slot.")
+                    continue
             
             is_valid, num_slot = check_int(num_slot)
             
             if not is_valid:
-                print "Invalid input: You should give me a integer (1-4)."
+                print_error("Invalid input.")
             
             elif not Game.check_num_slot(num_slot):
-                print "slot number must in range [1, 4]"
+                print_error("Slot number has to be in range [1-4].")
+                
             else:
-                break
+                print_action("Bet on Slot %s." % num_slot)
+                while True:
+                    bet = raw_input(message("How much to bet? ([%s-%s]:bet, a:abort, w:withdraw):" % (HOUSE_MIN, HOUSE_MAX)) )                    
+                    withdraw = False
+                    
+                    if bet == 'a':
+                        print_action("Abort.")
+                        break
+                    
+                    if bet == 'w':
+                        print_action("Withdraw.")
+                        bet = raw_input(message("Your bet on Slot %s: %s\nHow much will you withdraw from the slot? " % (num_slot, self._bets_on_slots[num_slot-1])) )
+                        withdraw = True
+                    
+                    is_valid, bet = check_int(bet)
+                    
+                    if not is_valid or bet <= 0:
+                        print_error("Bet has to be a positive integer.")
+                    
+                    elif withdraw == False and not self.check_player_balance( bet ):
+                        pass
         
-        while True:
-            bet = raw_input("How much to bet on Slot %s (bet: [%s-%s], 0:revoke, w:withdraw):" % (num_slot, HOUSE_MIN, HOUSE_MAX) )
-            
-            withdraw = False
-            if bet == 'w':
-                bet = raw_input("Your bet on Slot %s: %s\nHow much will you withdraw from it? " % (num_slot, self._bets_on_slots[num_slot-1]) )
-                withdraw = True
-            
-            is_valid, bet = check_float(bet)
-            
-            if not is_valid:
-                print "Invalid input: You should give me a number."
-            elif bet < 0:
-                print "Invalid input: You should give me a positive number."
-            elif bet == 0:
-                print "You revoke to bet on slot %s." % num_slot
-            
-            elif withdraw == False and bet > self._player.balance:
-                print "Your balance is not enough to bet."
-                        
-            else:
-                print self.bet(num_slot, bet, undo=withdraw)
-                print "Your balance: %s" % self._player.balance
-                break                
+                    else:
+                        if withdraw:
+                            print_action("Withdraw %s." % bet)
+                        else:
+                            print_action("Bet %s." % bet)
+                        print_highlight("Bets on each slot:" +  str(self.bet(num_slot-1, bet, undo=withdraw)) )
+                        self.show_player_balance()
+                        break                
     
     def init_deal_phase(self):
-        
-        print "\n == Initial Deal Phase == "
-        #TODO: Dealer on hole card
-        dealer_cards, player_cards = self.deal()
-        print "Dealer's cards: %s (points: %s)" % (dealer_cards, Game.count_points(dealer_cards) )
+        print_phase(Game.PHASE[1])
+        self.deal()
+        print_highlight("Dealer's cards: %s" % self.show_dealer_card(show_first_card=False))
         
         self._phase = Game.PHASE_POST_DEAL
          
     def post_deal_phase(self):
+        print_phase(Game.PHASE[2])
+        
+        for i, card_sets in enumerate( self._card_sets_on_slots ):
+            if card_sets:
+                split_status = False
+                print_highlight("Your cards on Slot %d: " % (i+1))
+                
+                for k, card_set in enumerate(card_sets):
 
-        print "\n == Post Deal Action Phase == "
-        
-        for i, card_set in enumerate( self._cards_on_slots ):
-            if card_set:
-                while True:
-                    points = Game.count_points(card_set) 
-                    print "Your cards on Slot %s: %s (points: %s)" % (i+1, card_set, points)
-                    
-                    if points == 21:
-                        print "Blackjack!"
-                        break
-                    
-                    if points > 21:
-                        print "Bust!"
-                        break
-                 
-                    #TODO: more than 5 cards
-                    available_actions = ['h:hit', 's:stand']
-                    allow_split = False
-                    allow_double = False
-                    
-                    if len(card_set) == 2:
-                        if card_set[1].pip == card_set[2].pip:
-                            allow_split = True
-                        allow_double = True
-                    
-                    if allow_aplit:
-                        available_actions.append('s:split')
-                    if allow_double:
-                        available_actions.append('d:doouble')
-                    action = raw_input("(" + ', '.join(available_actions) +"): ")
-                    
-                    if action == "h":
-                        card_set = self.hit(i+1)
-                    elif action == "s":
-                        break
-                    else:
-                        print "Invalid input."
-        
+                    while True:
+                        points = Game.count_points(card_set)
+ 
+                        print_highlight("card set %s: %s (points: %s)" % ((k+1), card_set, points) )
+                        
+                        if points == 21:
+                            if len(card_set) == 2:
+                                print_highlight("Blackjack!")
+                            break
+                        
+                        if points > 21:
+                            print_highlight("Bust!")
+                            break
+
+                        available_actions = ['h:hit', 's:stand']
+                        allow_split = False
+                        allow_double = False
+                        
+                        num_card = len(card_set)
+                        if num_card == 2:
+                            if card_set[0].pip == card_set[1].pip:
+                                allow_split = True
+                            allow_double = True
+                        
+                        if allow_split:
+                            available_actions.append('t:split')
+                        if allow_double and not split_status:
+                            available_actions.append('d:doouble down')
+                        act = raw_input("(" + ', '.join(available_actions) +"): ")
+                        
+                        if act == "h":
+                            print_action("Hit.")
+                            card_set.extend( self._dealer.draw_cards_from_deck(1) )
+                        elif act == "s":
+                            print_action("Stand.")
+                            break
+                        elif act == "t" and allow_split == True:
+                            print_action("Split.")
+                            split_status = True
+                            
+                            original_bet = self._bets_on_slots[i]
+                            if self.check_player_balance(original_bet):
+                                self._player.balance -= original_bet
+                                print_highlight("Place a second bet for the new splited card set: %s" % original_bet)
+                                self.show_player_balance() 
+                                print_highlight("%s ->" % card_set)
+                                
+                                new_card_set = [card_set.pop()]
+                                
+                                card_set.extend(self._dealer.draw_cards_from_deck(1))
+                                new_card_set.extend(self._dealer.draw_cards_from_deck(1))
+                                card_sets.append(new_card_set)
+                                
+                                print_highlight(card_set)
+                                print_highlight(new_card_set)
+                            
+                        elif act == "d" and allow_double and not split_status:
+                            print_action("Double down on slot %s." % (i+1))
+                            original_bet = self._bets_on_slots[i]
+                            
+                            if self.check_player_balance(original_bet):
+                                print_highlight( "Bets on each slot:" +  str(self.bet(i, original_bet, double=True)) )
+                                self.show_player_balance()
+                                
+                                print_highlight("Take one additional card.")
+                                card_set.extend( self._dealer.draw_cards_from_deck(1) )
+                                
+                                points = Game.count_points(card_set)
+                                print_highlight("card set %s: %s (points: %s)" % ((k+1), card_set, points) )
+                                break
+                        else:
+                            print_error("Invalid input.")
+            
         self._phase = Game.PHASE_DEALER 
     
     def dealer_phase(self):
-        print "\n == Dealer Phase == "
+        print_phase(Game.PHASE[3])
+        
         while True:
             dealer_points = Game.count_points(self._dealer_cards)
-            print "Dealer's cards: %s (points: %s)" % (self._dealer_cards, Game.count_points(self._dealer_cards) )
+            print_highlight( "Dealer's cards: %s (points: %s)" % (self.show_dealer_card(show_first_card=True), Game.count_points(self._dealer_cards)) )
             
             if dealer_points <= 16:
                 self._dealer_cards.extend( self._dealer.draw_cards_from_deck(1) )
             elif dealer_points > 21:
-                print "Dealer Bust!"
+                print_highlight("Dealer Bust!")
+                break
             else:
                 if dealer_points == 21:
-                    print "Dealer Blackjack!"
-                elif dealer_points < 21:
-                    print "Dealer's final cards: %s (points: %s)" % (self._dealer_cards, Game.count_points(self._dealer_cards) )
+                    print_highlight("Dealer Blackjack!")
                 break
-                
+        #print_highlight( "Dealer's cards: %s (points: %s)" % (self.show_dealer_card(show_first_card=True), Game.count_points(self._dealer_cards)) )        
         self._phase = Game.PHASE_BET_COLLECTION
     
     def bet_collection_phase(self):
-        print "\n == Bet Collection Phase == "
+        print_phase(Game.PHASE[4])
         
-        print "Dealer's cards: %s (points: %s)" % (self._dealer_cards, Game.count_points(self._dealer_cards) )
-        
-        for i, card_set in enumerate( self._cards_on_slots ):
-            if card_set:
+        for i, card_sets in enumerate( self._card_sets_on_slots ):
+            if card_sets:
                 bet = self._bets_on_slots[i]
-                print "Your cards on Slot %s: %s (points: %s)" % (i+1, card_set, Game.count_points(card_set) )
-                result, award = self.judge(card_set, bet)
                 
-                if result == Dealer.WIN:
-                    print "You lose %s bet." % bet 
-                    
-                if result == Dealer.LOSE:
-                    self._player.balance += award
-                    print "You win %s bet. Balance: %s" % ( award, self._player.balance) 
-                    
-                if result == Dealer.TIE:
-                    print "Game Tie."
+                print_highlight( "Your cards on Slot %d: " % (i+1) )
+                for k, card_set in enumerate(card_sets):                    
+                    points = Game.count_points(card_set) 
+                    msg =  "Card set %s: %s (points: %s)" % ((k+1), card_set, points)
+
+                    result, award = self.judge(card_set, bet)
             
+                    if result == Dealer.WIN:
+                        print_highlight( msg + " -> You lose %s bet." % bet ) 
+                        
+                    if result == Dealer.LOSE:
+                        self._player.balance += bet + award
+                        print_highlight( msg + " -> You win %s bet." % award ) 
+                        
+                    if result == Dealer.TIE:
+                        self._player.balance += bet
+                        print_highlight( msg + " -> Game Tie." )
+
         self.reset()
     
     def judge(self, card_set, bet):
@@ -175,19 +240,29 @@ class Game(object):
         dealer_total_points = 0 if dealer_total_points > 21 else dealer_total_points
         total_points = 0 if total_points > 21 else total_points
         
+        if total_points == 0:
+            return Dealer.WIN, 0
+        
         if dealer_total_points > total_points:
             return Dealer.WIN, 0
         elif dealer_total_points < total_points:
-            return Dealer.LOSE, bet * 1
+            # Player wins two bets because of Blackjack.
+            if total_points == 21 and len(card_set) == 2:
+                return Dealer.LOSE, bet * 2
+            return Dealer.LOSE, bet
         else:
             return Dealer.TIE, 0
-
     
-    def start(self):        
-        self._dealer.init_deal()
-        self._dealer.show_cards()
-        self._player.show_cards()
     
+    def show_player_balance(self):
+        print_highlight("Your balance: %s" % self._player.balance)
+        
+    def show_dealer_card(self, show_first_card=False):
+        if show_first_card:
+            return self._dealer_cards
+        else:
+            return "[ " + "*Hole Card*, " + ", ".join( [str(card) for i, card in enumerate(self._dealer_cards) if i > 0]) + " ]"
+        
     @classmethod
     def count_points(cls, card_set):        
         total = 0
@@ -214,8 +289,14 @@ class Game(object):
         if int(num_slot) not in range(1,5):
             return False
         return True
-        
-    def bet(self, num_slot, bet, undo=None):
+    
+    def check_player_balance(self, bet):
+        if bet > self._player.balance:
+            print_error("Your balance is not enough.")
+            return False
+        return True
+    
+    def bet(self, num_slot, bet, undo=False, double=False):
         """    
         blackjack-bet - takes a slot number (int), bet amount (float). Must check for validity of slot numbers (1-4). 
         Must check if bet is within house minimum and maximum. 
@@ -223,20 +304,22 @@ class Game(object):
         Optional parameter, undo (boolean) if set, removes the bet amount from the slot number. 
         Returns total bet amounts for each slot.
         """
-        bet_on_slot = self._bets_on_slots[num_slot-1]
+        bet_on_slot = self._bets_on_slots[num_slot]
         if undo == True:
             if bet_on_slot >= bet:
                 self._player.balance += bet
-                self._bets_on_slots[num_slot-1] -= bet
+                self._bets_on_slots[num_slot] -= bet
             else:
-                print "Your bet on slot %s is %s. You can't withdraw %s bet from it." % (num_slot, bet_on_slot, bet)   
+                print_error( "Your bet on slot %s is %s. You can't withdraw %s bet from it." % (num_slot+1, bet_on_slot, bet) )   
         else:
             after_bet_on_slot = bet_on_slot + bet 
-            if after_bet_on_slot < HOUSE_MIN or after_bet_on_slot > HOUSE_MAX:
-                print "The bet on the slot must within [%s, %s]" % (HOUSE_MIN, HOUSE_MAX) 
-            else:               
+            
+            if not double and (after_bet_on_slot < HOUSE_MIN or after_bet_on_slot > HOUSE_MAX):
+                print_error("The bet on the slot must within [%s, %s]" % (HOUSE_MIN, HOUSE_MAX))
+            else:
                 self._player.balance -= bet
-                self._bets_on_slots[num_slot-1] += bet
+                self._bets_on_slots[num_slot] += bet                     
+
         return self._bets_on_slots
 
     def deal(self):
@@ -248,38 +331,9 @@ class Game(object):
         
         for i, bet in enumerate(self._bets_on_slots):
             if bet != 0:
-                self._cards_on_slots[i] = self._dealer.draw_cards_from_deck(2)
+                self._card_sets_on_slots[i] = [self._dealer.draw_cards_from_deck(2)]
         
-        return (self._dealer_cards, self._cards_on_slots)
-
-    def hit(self, num_slot):
-        """
-        blackjack-hit - takes a slot number (int), 
-        returns hand in the slot plus the new card from the hit.
-        """
-        if not Game.check_num_slot(num_slot):
-            print "slot number must in range [1, 4]"
-        
-        elif self._bets_on_slots[num_slot-1] == 0:
-            print "You have no bet on slot %s" % num_slot
-        
-        else:
-            self._cards_on_slots[num_slot-1].extend( self._dealer.draw_cards_from_deck(1) )
-        
-        return self._cards_on_slots[num_slot-1]
-    
-    def stand(self, num_slot):
-        """
-        blackjack-stand - takes a slot number (int), 
-        returns the hand in the slot.
-        """
-        if not Game.check_num_slot(num_slot):
-            print "slot number must in range [1, 4]"
-        
-        elif self._bets_on_slots[num_slot-1] == 0:
-            print "You have no bet on slot %s" % num_slot
-            
-        return self._cards_on_slots[num_slot-1]
+        return (self._dealer_cards, self._card_sets_on_slots)
         
     def run(self):
         {
@@ -291,20 +345,4 @@ class Game(object):
          }[self._phase]()
          
         return True
-    
-    def show(self, dealer, player):
-        pass
-    
-    def more_card(self):
-        pass
-    
-    def enough(self):
-        pass
-    
-    def restart(self):
-        pass
-    
-    def quit():
-        pass
-    
     

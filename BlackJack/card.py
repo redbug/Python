@@ -1,4 +1,7 @@
 #!/usr/bin/python2.6
+"""
+Poker Card Class
+"""
 from settings import *
 
 class Card(object):
@@ -7,8 +10,8 @@ class Card(object):
         assert id >= 0 and id < NUM_CARDS
         
         self._id = id
-        self._pip = id / NUM_PIP
-        self._suit = id % NUM_SUIT
+        self._pip = id % NUM_PIP
+        self._suit = id / NUM_PIP
         
     @property
     def id(self):
