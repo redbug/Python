@@ -16,8 +16,8 @@ from xml.dom.minidom import parseString
 
 class MyMTurk:
 
-    AWS_ACCESS_KEY_ID = 'AKIAIAFXUAMJF3PGMXIA'
-    AWS_SECRET_ACCESS_KEY = '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'
+    AWS_ACCESS_KEY_ID = 'skip'
+    AWS_SECRET_ACCESS_KEY = 'skip'
     HOST_SANDBOX = 'mechanicalturk.sandbox.amazonaws.com'
     HOST_MTURK = 'mechanicalturk.amazonaws.com'
 
